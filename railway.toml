@@ -1,0 +1,9 @@
+ ```toml                                                                                                              
+   [build]                                                                                                            
+   builder = "docker"                                                                                                 
+   dockerfilePath = "Dockerfile"                                                                                      
+                                                                                                                      
+   [deploy]                                                                                                           
+   startCommand = "node dist/server.js"                                                                               
+   healthcheckPath = "/"                                                                                              
+   healthcheckTimeout = 100 
