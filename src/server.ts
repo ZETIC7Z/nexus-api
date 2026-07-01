@@ -100,6 +100,69 @@ async function main() {
     const registry = server.getRegistry();
     await registry.discoverProviders(path.join(__dirname, './providers/'));
 
+    // Intercept and override /v1/proxy route to resolve double-decoding bug on nested target URLs (like VidRock/VidApi)
+    const app = server.getInstance();
+    app.addHook('preValidation', async (request, reply) => {
+        if ((request as any).routerPath === '/v1/proxy') {
+            const { data } = request.query as { data?: string };
+            if (!data) {
+                return reply.code(400).send({
+                    error: {
+                        code: 'MISSING_PARAMETER',
+                        message: 'Missing required parameter: data',
+                    },
+                    traceId: request.id,
+                });
+            }
+
+            let proxyDataRaw;
+            try {
+                // Since Fastify has already decoded the data parameter once, we try parsing it directly.
+                proxyDataRaw = JSON.parse(data);
+            } catch (error) {
+                // Fallback: if client double-encoded it, try decoding once
+                try {
+                    const decoded = decodeURIComponent(data);
+                    proxyDataRaw = JSON.parse(decoded);
+                } catch (err2) {
+                    return reply.code(400).send({
+                        error: {
+                            code: 'INVALID_PARAMETER',
+                            message: 'Invalid data parameter format',
+                        },
+                        traceId: request.id,
+                    });
+                }
+            }
+
+            // Inject range headers
+            const proxyData = {
+                ...proxyDataRaw,
+                headers: {
+                    ...proxyDataRaw.headers,
+                    ...(request.headers.range && { range: request.headers.range }),
+                    ...(request.headers.Range && { Range: request.headers.Range }),
+                },
+            };
+
+            const enhancedData = encodeURIComponent(JSON.stringify(proxyData));
+            const response = await (server as any).proxyService.proxyRequest(enhancedData);
+
+            const isStreamResponse = (res: any): boolean => res && 'stream' in res;
+
+            if (isStreamResponse(response)) {
+                reply.code(response.statusCode).headers(response.headers).type(response.contentType);
+                return reply.send(response.stream);
+            }
+
+            return reply
+                .code(response.statusCode)
+                .headers(response.headers || {})
+                .type(response.contentType)
+                .send(response.data);
+        }
+    });
+
     await server.start();
 
     const publicUrl =
