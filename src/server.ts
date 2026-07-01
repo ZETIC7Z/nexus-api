@@ -56,10 +56,14 @@ async function main() {
 
         cors: {
             origin: (() => {
+                // Default to wildcard to allow all origins (most permissive, best for public streaming API)
+                // Set CORS_RESTRICT=true AND CORS_ORIGIN=<comma-separated-origins> to restrict
+                const restrict = process.env.CORS_RESTRICT === 'true';
                 const raw = process.env.CORS_ORIGIN;
-                if (!raw || raw === '*') return '*';
-                // Support comma-separated list of origins
+                if (!restrict || !raw || raw === '*') return '*';
+                // Support comma-separated list of origins when restriction is enabled
                 const origins = raw.split(',').map(o => o.trim()).filter(Boolean);
+                if (origins.length === 0) return '*';
                 if (origins.length === 1) return origins[0];
                 return origins;
             })(),
