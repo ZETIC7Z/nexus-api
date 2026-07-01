@@ -2,6 +2,16 @@ import { OMSSServer } from '@omss/framework';
 import 'dotenv/config';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { webcrypto } from 'node:crypto';
+
+// Polyfill crypto globally for Node 18 environment
+if (!globalThis.crypto) {
+    Object.defineProperty(globalThis, 'crypto', {
+        value: webcrypto,
+        writable: false,
+        configurable: true
+    });
+}
 import { knownThirdPartyProxies } from './thirdPartyProxies.js';
 import { streamPatterns } from './streamPatterns.js';
 
@@ -45,7 +55,14 @@ async function main() {
         },
 
         cors: {
-            origin: process.env.CORS_ORIGIN ?? '*',
+            origin: (() => {
+                const raw = process.env.CORS_ORIGIN;
+                if (!raw || raw === '*') return '*';
+                // Support comma-separated list of origins
+                const origins = raw.split(',').map(o => o.trim()).filter(Boolean);
+                if (origins.length === 1) return origins[0];
+                return origins;
+            })(),
             methods: ['GET', 'OPTIONS'],
             allowedHeaders: ['Content-Type', 'Authorization'],
             exposedHeaders: ['Content-Range', 'Accept-Ranges', 'ETag'],
