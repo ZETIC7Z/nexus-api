@@ -103,8 +103,10 @@ async function main() {
     // Intercept and override /v1/proxy route to resolve double-decoding bug on nested target URLs (like VidRock/VidApi)
     const app = server.getInstance();
     app.addHook('preValidation', async (request, reply) => {
-        if ((request as any).routerPath === '/v1/proxy') {
+        console.log(`[ProxyHook] Match check: routerPath=${(request as any).routerPath}, url=${request.url}`);
+        if ((request as any).routerPath === '/v1/proxy' || request.url.startsWith('/v1/proxy')) {
             const { data } = request.query as { data?: string };
+            console.log(`[ProxyHook] Intercepted /v1/proxy request. data length: ${data?.length}`);
             if (!data) {
                 return reply.code(400).send({
                     error: {
@@ -119,12 +121,16 @@ async function main() {
             try {
                 // Since Fastify has already decoded the data parameter once, we try parsing it directly.
                 proxyDataRaw = JSON.parse(data);
-            } catch (error) {
+                console.log(`[ProxyHook] Parsed data directly successfully! target url: ${proxyDataRaw.url?.slice(0, 80)}`);
+            } catch (error: any) {
+                console.log(`[ProxyHook] Direct parse failed: ${error.message}. Trying decode...`);
                 // Fallback: if client double-encoded it, try decoding once
                 try {
                     const decoded = decodeURIComponent(data);
                     proxyDataRaw = JSON.parse(decoded);
-                } catch (err2) {
+                    console.log(`[ProxyHook] Parsed decoded data successfully! target url: ${proxyDataRaw.url?.slice(0, 80)}`);
+                } catch (err2: any) {
+                    console.log(`[ProxyHook] Decode parse failed: ${err2.message}`);
                     return reply.code(400).send({
                         error: {
                             code: 'INVALID_PARAMETER',
